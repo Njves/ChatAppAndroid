@@ -3,7 +3,7 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:layout_margin="16dp">
-    <LinearLayout
+    <androidx.cardview.widget.CardView
         android:id="@+id/linear"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
@@ -19,5 +19,5 @@
                 android:layout_height="match_parent"
                 android:hint="Название комнаты"/>
         </com.google.android.material.textfield.TextInputLayout>
-    </LinearLayout>
+    </androidx.cardview.widget.CardView>
 </androidx.constraintlayout.widget.ConstraintLayout>

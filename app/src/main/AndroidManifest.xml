@@ -32,7 +32,8 @@
             android:label="Регистрация"/>
         <activity android:name=".RoomListActivity"
             android:label="Список комнат"/>
-        <activity android:name=".MessageListActivity" />
+        <activity android:name=".MessageListActivity"
+            android:windowSoftInputMode="adjustPan" />
         <activity android:name=".MapActivity" />
     </application>
 

@@ -2,6 +2,7 @@ package com.example.androiduni
 
 import android.os.Bundle
 import android.util.Log
+import android.widget.ImageButton
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -9,6 +10,7 @@ import com.example.androiduni.room.model.Room
 import com.example.androiduni.room.request.RoomService
 import com.example.androiduni.ui.RoomAdapter
 import com.google.android.material.floatingactionbutton.FloatingActionButton
+import com.google.gson.Gson
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
@@ -17,6 +19,9 @@ import retrofit2.Response
 class RoomListActivity : AppCompatActivity() {
     private lateinit var recyclerViewRoomList: RecyclerView
     private lateinit var buttonCreateRoom: FloatingActionButton
+    private var roomList: MutableList<Room> = mutableListOf()
+    private val gson: Gson = Gson()
+    private lateinit var buttonRemove: ImageButton
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
@@ -24,9 +29,11 @@ class RoomListActivity : AppCompatActivity() {
         buttonCreateRoom = findViewById(R.id.floatingActionButton)
         recyclerViewRoomList.layoutManager = LinearLayoutManager(this)
             val service = Client.getClient().create(RoomService::class.java)
+
         service.getRooms().enqueue(object: Callback<List<Room>> {
             override fun onResponse(call: Call<List<Room>>, response: Response<List<Room>>) {
-                recyclerViewRoomList.adapter = RoomAdapter(this@RoomListActivity, response.body()!!)
+                roomList = response.body()!!.toMutableList()
+                recyclerViewRoomList.adapter = RoomAdapter(this@RoomListActivity, roomList)
                 Log.d(this@RoomListActivity.toString(), response.body()!!.toString())
             }
 
@@ -39,6 +46,13 @@ class RoomListActivity : AppCompatActivity() {
         buttonCreateRoom.setOnClickListener {
             val dialog = CreateRoomDialogFragment()
             dialog.show(supportFragmentManager, "Create Room")
+        }
+
+        Socket.get().on("new_room") {
+            roomList.add(gson.fromJson(it.toString(), Room::class.java))
+            runOnUiThread {
+                recyclerViewRoomList.adapter?.notifyItemInserted(roomList.size - 1)
+            }
         }
     }
 }

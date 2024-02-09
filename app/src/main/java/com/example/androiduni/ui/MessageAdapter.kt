@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
+import android.view.View.GONE
 import android.view.View.VISIBLE
 import android.view.ViewGroup
 import android.widget.ImageView
@@ -14,7 +15,9 @@ import com.example.androiduni.PicassoNotSafe
 import com.example.androiduni.R
 import com.example.androiduni.UserProvider
 import com.example.androiduni.message.Message
+import com.squareup.picasso.Callback
 import com.squareup.picasso.Picasso
+import java.lang.Exception
 
 class MessageAdapter(private val context: Context, private val messagesList: List<Message>) : RecyclerView.Adapter<MessageAdapter.MessageViewHolder>() {
     override fun onCreateViewHolder(
@@ -55,7 +58,7 @@ class MessageAdapter(private val context: Context, private val messagesList: Lis
             Log.d("MessageAdapter", message.attachments.toString())
             if(message.attachments.isNotEmpty()) {
                 ivAttach.visibility = VISIBLE
-                PicassoNotSafe.get(context).load(Client.BASE_URL + message.attachments[0].link).into(ivAttach)
+                PicassoNotSafe.get(context).load(Client.BASE_URL + message.attachments[0].link).fit().error(R.drawable.ic_error).into(ivAttach)
             }
 //            tvDate.text = message.date.toString()
         }

@@ -1,10 +1,13 @@
 package com.example.androiduni
 
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.util.Log
 import android.view.Menu
 import android.view.MenuItem
+import android.view.View
+import android.view.View.OnLayoutChangeListener
 import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
 import android.widget.ImageButton
@@ -21,6 +24,7 @@ import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
 import java.util.Date
+
 
 class MessageListActivity : AppCompatActivity() {
     private lateinit var recyclerViewMessagesList: RecyclerView
@@ -52,19 +56,15 @@ class MessageListActivity : AppCompatActivity() {
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
         recyclerViewMessagesList = findViewById(R.id.rvMessages)
         recyclerViewMessagesList.layoutManager = LinearLayoutManager(this)
-        recyclerViewMessagesList.addOnLayoutChangeListener { p0, p1, p2, p3, p4, p5, p6, p7, p8 ->
-            recyclerViewMessagesList.scrollToPosition(
-                messageList.size - 1
-            )
-        }
+
         recyclerViewMessagesList.addOnScrollListener(object: RecyclerView.OnScrollListener() {
             override fun onScrollStateChanged(recyclerView: RecyclerView, newState: Int) {
-                currentFocus?.let {
-                    val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
-                    imm.hideSoftInputFromWindow(it.windowToken, 0)
-                }
+                super.onScrollStateChanged(recyclerView, newState)
+                val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+                imm.hideSoftInputFromWindow(currentFocus?.windowToken, 0)
             }
         })
+
         roomService.getMessages(roomId).enqueue(object: Callback<RoomWithMessages> {
             override fun onResponse(call: Call<RoomWithMessages>, response: Response<RoomWithMessages>) {
                 messageList = response.body()!!.messages.reversed().toMutableList()
