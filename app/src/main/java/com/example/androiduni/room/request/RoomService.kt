@@ -24,5 +24,5 @@ interface RoomService {
     fun createRoom(@Body room: Room, @Header("Authorization") token: String): Call<Room>
 
     @DELETE("/room/{id}")
-    fun removeRoom(@Path("id") id: Int): Call<ResponseBody>
+    fun removeRoom(@Path("id") id: Int, @Header("Authorization") token: String): Call<Response<Void>>
 }

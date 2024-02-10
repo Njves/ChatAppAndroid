@@ -6,18 +6,22 @@ import android.os.Bundle
 import android.util.Log
 import android.view.Menu
 import android.view.MenuItem
-import android.view.View
-import android.view.View.OnLayoutChangeListener
 import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
 import android.widget.ImageButton
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.view.ActionMode
+import androidx.recyclerview.selection.SelectionTracker
+import androidx.recyclerview.selection.StorageStrategy
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.example.androiduni.message.Message
 import com.example.androiduni.room.model.RoomWithMessages
 import com.example.androiduni.room.request.RoomService
+import com.example.androiduni.select.ActionModeController
+import com.example.androiduni.select.MessageKeyProvider
+import com.example.androiduni.select.MessageLookup
 import com.example.androiduni.ui.MessageAdapter
 import com.google.gson.GsonBuilder
 import retrofit2.Call
@@ -31,8 +35,10 @@ class MessageListActivity : AppCompatActivity() {
     private lateinit var buttonSend: ImageButton
     private lateinit var editText: EditText
     private var roomId: Int = -1
+    private var actionMode: ActionMode? = null
     private var messageList: MutableList<Message> = mutableListOf()
     private val roomService: RoomService = Client.getClient().create(RoomService::class.java)
+    private lateinit var  adapter: MessageAdapter
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_message_list)
@@ -68,7 +74,32 @@ class MessageListActivity : AppCompatActivity() {
         roomService.getMessages(roomId).enqueue(object: Callback<RoomWithMessages> {
             override fun onResponse(call: Call<RoomWithMessages>, response: Response<RoomWithMessages>) {
                 messageList = response.body()!!.messages.reversed().toMutableList()
-                recyclerViewMessagesList.adapter = MessageAdapter(this@MessageListActivity, messageList)
+                adapter = MessageAdapter(this@MessageListActivity, messageList)
+                recyclerViewMessagesList.adapter = adapter
+
+                val tracker = SelectionTracker.Builder(
+                        "someId",
+                        recyclerViewMessagesList,
+                        MessageKeyProvider(messageList),
+                        MessageLookup(recyclerViewMessagesList),
+                        StorageStrategy.createParcelableStorage(Message::class.java)
+                    ).build()
+                adapter.tracker = tracker
+                tracker.addObserver(object : SelectionTracker.SelectionObserver<Message>() {
+                    override fun onSelectionChanged() {
+                        super.onSelectionChanged()
+                        if (tracker.hasSelection() && actionMode == null) {
+                            actionMode = startSupportActionMode(ActionModeController(tracker))
+                            setSelectedTitle(tracker.selection.size())
+                        } else if (!tracker.hasSelection()) {
+                            actionMode?.finish()
+                            actionMode = null
+                        } else {
+                            setSelectedTitle(tracker.selection.size())
+                        }
+                    }
+                })
+
                 recyclerViewMessagesList.scrollToPosition(response.body()!!.messages.size-1)
             }
 
@@ -77,6 +108,12 @@ class MessageListActivity : AppCompatActivity() {
                 Toast.makeText(this@MessageListActivity, "Неудалось получить сообщения", Toast.LENGTH_SHORT).show()
             }
         })
+
+
+    }
+
+    private fun setSelectedTitle(selected: Int) {
+        actionMode?.title = "Selected: $selected"
     }
 
     private fun sendMessage() {
