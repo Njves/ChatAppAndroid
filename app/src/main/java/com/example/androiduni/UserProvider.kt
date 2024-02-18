@@ -35,4 +35,12 @@ object UserProvider {
 
         }
     }
+
+    fun logoutUser(context: Context) {
+        val sharedPreferences: SharedPreferences =
+            context.getSharedPreferences("Login", MODE_PRIVATE)
+        val editor = sharedPreferences.edit()
+        editor.remove("access_token")
+        editor.apply()
+    }
 }

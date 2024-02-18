@@ -17,6 +17,16 @@
         android:layout_marginRight="16dp"
         android:layout_marginLeft="16dp" />
 
+    <ProgressBar
+        android:id="@+id/progressBar"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        android:visibility="gone"/>
+
     <androidx.constraintlayout.widget.ConstraintLayout
         android:id="@+id/formRegister"
         android:layout_width="match_parent"
@@ -52,7 +62,8 @@
                 android:id="@+id/inputRegisterPassword"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                android:hint="Пароль" />
+                android:hint="Пароль"
+                android:inputType="textPassword"/>
         </com.google.android.material.textfield.TextInputLayout>
         <com.google.android.material.textfield.TextInputLayout
             android:id="@+id/layoutPasswordRepeat"
@@ -67,7 +78,8 @@
                 android:id="@+id/inputRegisterPasswordRepeat"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                android:hint="Повторите пароль" />
+                android:hint="Повторите пароль"
+                android:inputType="textPassword"/>
         </com.google.android.material.textfield.TextInputLayout>
         <com.google.android.material.button.MaterialButton
             android:id="@+id/buttonRegisterLogin"

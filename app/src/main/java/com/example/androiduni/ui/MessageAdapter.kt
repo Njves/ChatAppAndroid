@@ -8,6 +8,7 @@ import android.view.View
 import android.view.View.GONE
 import android.view.View.VISIBLE
 import android.view.ViewGroup
+import android.widget.GridView
 import android.widget.ImageView
 import android.widget.TextView
 import androidx.cardview.widget.CardView
@@ -25,7 +26,7 @@ import com.squareup.picasso.Callback
 import com.squareup.picasso.Picasso
 import java.lang.Exception
 
-class MessageAdapter(private val context: Context, private val messagesList: List<Message>) : RecyclerView.Adapter<MessageAdapter.MessageViewHolder>() {
+class MessageAdapter(private val context: Context, private var messagesList: List<Message>) : RecyclerView.Adapter<MessageAdapter.MessageViewHolder>() {
     lateinit var tracker: SelectionTracker<Message>
     override fun onCreateViewHolder(
         parent: ViewGroup,
@@ -58,23 +59,22 @@ class MessageAdapter(private val context: Context, private val messagesList: Lis
         return messagesList.size
     }
 
+    fun setData(list: MutableList<Message>) {
+        this.messagesList = list
+    }
+
     inner class MessageViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView), ViewHolderWithDetails<Message> {
         private val tvSender: TextView = itemView.findViewById(R.id.tvSender)
         private val tvMessage: TextView = itemView.findViewById(R.id.tvMessage)
-        private val ivAttach: ImageView = itemView.findViewById(R.id.ivAttach)
+        private val grid: GridView = itemView.findViewById(R.id.gridImages)
         val tvDate: TextView = itemView.findViewById(R.id.tvTime)
-        private val cardLayout: CardView = itemView.findViewById(R.id.cardLayout)
         fun bind(message: Message) {
 
             tvSender.text = message.user.username
             tvMessage.text = message.text
             Picasso.get().isLoggingEnabled = true
             Log.d("MessageAdapter", message.attachments.toString())
-            if(message.attachments.isNotEmpty()) {
-                ivAttach.visibility = VISIBLE
-                PicassoNotSafe.get(context).load(Client.BASE_URL + message.attachments[0].link).fit().error(R.drawable.ic_error).into(ivAttach)
-            }
-//            tvDate.text = message.date.toString()
+            grid.adapter = ImageAdapter(context, message.attachments)
         }
         fun setActivatedState(isActivated: Boolean) {
             itemView.isActivated = isActivated

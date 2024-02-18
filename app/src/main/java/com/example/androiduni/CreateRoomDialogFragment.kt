@@ -1,21 +1,19 @@
 package com.example.androiduni
 
 import android.app.Dialog
-import android.content.DialogInterface
 import android.os.Bundle
 import android.util.Log
 import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.DialogFragment
-import com.example.androiduni.room.model.Room
+import com.example.androiduni.room.model.RoomModel
 import com.example.androiduni.room.request.RoomService
 import com.google.android.material.textfield.TextInputEditText
 import com.google.gson.Gson
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
-import retrofit2.create
 import java.lang.IllegalStateException
 
 class CreateRoomDialogFragment : DialogFragment() {
@@ -31,21 +29,21 @@ class CreateRoomDialogFragment : DialogFragment() {
                 // Add action buttons.
                 .setPositiveButton("Создать комнату") { dialog, id ->
                     roomService.createRoom(
-                        Room(
+                        RoomModel(
                             -1,
                             roomName.text.toString(),
                             UserProvider.user!!.id,
                             null
                         ), UserProvider.token!!
-                    ).enqueue(object : Callback<Room> {
-                        override fun onResponse(call: Call<Room>, response: Response<Room>) {
+                    ).enqueue(object : Callback<RoomModel> {
+                        override fun onResponse(call: Call<RoomModel>, response: Response<RoomModel>) {
                             if(!response.isSuccessful) {
                                 Log.d("CreateRoomDialogFragment", response.errorBody()!!.string())
                                 Toast.makeText(context, response.errorBody()!!.string(), Toast.LENGTH_SHORT).show()
                             }
                         }
 
-                        override fun onFailure(call: Call<Room>, t: Throwable) {
+                        override fun onFailure(call: Call<RoomModel>, t: Throwable) {
                             Log.d(this@CreateRoomDialogFragment.toString(), t.toString())
                         }
 
