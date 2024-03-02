@@ -45,7 +45,6 @@ class RoomListActivity : AppCompatActivity() {
     private val service = Client.getClient().create(RoomService::class.java)
     private lateinit var adapter: RoomAdapter
     private val roomResponseViewModel: RoomResponseViewModel by viewModels()
-    private val databaseRooms = mutableListOf<RoomWithLastMessage>()
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
@@ -57,47 +56,24 @@ class RoomListActivity : AppCompatActivity() {
         adapter = RoomAdapter(this@RoomListActivity, roomModelList)
         recyclerViewRoomList.adapter = adapter
         supportActionBar?.title = UserProvider.user?.username
-//        CoroutineScope(Dispatchers.IO).launch {
-//            AppDatabase.getInstance(this@RoomListActivity)?.let {
-//                databaseRooms.addAll(it.roomDao()?.getAllRooms()!!.toMutableList())
-//                if(databaseRooms.isNotEmpty()) {
-//                    CoroutineScope(Dispatchers.Main).launch {
-//                        Log.d(this@RoomListActivity.toString(), "Из базы данных пришли данные $databaseRooms")
-//                        adapter.addData(databaseRooms.map {
-//                            it.room
-//                        }.toMutableList())
-//
-//                        Toast.makeText(this@RoomListActivity, "из базы данных ${databaseRooms.size}", Toast.LENGTH_SHORT).show()
-//                    }
-//
-//                }
-//
-//            }
-//        }
-
+        val databaseRoomsHashSet: HashSet<RoomModel> = hashSetOf()
+        CoroutineScope(Dispatchers.IO).launch {
+            AppDatabase.getInstance(this@RoomListActivity)?.let {appDatabase ->
+                appDatabase.roomDao()?.getAllRooms()?.let { data ->
+                    databaseRoomsHashSet.addAll(data.map { it.room })
+                }
+            }
+        }
+        val networkRoomsHashSet: HashSet<RoomModel> = hashSetOf()
         CoroutineScope(Dispatchers.IO).launch {
             val response = service.getRooms().execute()
             CoroutineScope(Dispatchers.Main).launch {
                 progressBar.visibility = GONE
-                roomModelList = response.body()!!.toMutableList()
-                CoroutineScope(Dispatchers.IO).launch {
-                    roomModelList.forEach { model ->
-                        val database = AppDatabase.getInstance(this@RoomListActivity)
-                        CoroutineScope(Dispatchers.Main).launch {
-                            adapter.addData(listOf(model))
-                        }
-                        if(model.id !in databaseRooms.map { it.room.id }.toList()) {
-//                            database?.roomDao()?.insertRoom(model)
-
-                        }
-                    }
-//                    databaseRooms.forEach { dbRoom ->
-//                        if(dbRoom.room.id !in roomModelList.map { it.id }) {
-//                            adapter.remove(dbRoom.room)
-//                        }
-//                    }
+                response.body()?.let {
+                    networkRoomsHashSet.addAll(it)
+                    networkRoomsHashSet.removeAll(databaseRoomsHashSet)
+                    adapter.addData(networkRoomsHashSet.toList().sortedBy { it.id })
                 }
-
                 Log.d(this@RoomListActivity.toString(), response.body()!!.toString())
                 if (!response.isSuccessful) {
                     Log.d("RoomListActivity", response.message())
