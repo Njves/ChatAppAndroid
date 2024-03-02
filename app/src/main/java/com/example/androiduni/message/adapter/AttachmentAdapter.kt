@@ -7,16 +7,18 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
 import androidx.recyclerview.widget.RecyclerView
+import com.example.androiduni.AttachmentViewModel
 import com.example.androiduni.Client
 import com.example.androiduni.PicassoNotSafe
 import com.example.androiduni.R
 import com.example.androiduni.message.Attachment
+import com.squareup.picasso.Picasso
 
-class AttachmentAdapter(private val context: Context, private val attachments: MutableList<Attachment>) : RecyclerView.Adapter<AttachmentAdapter.AttachmentViewHolder>() {
+class AttachmentAdapter(private val context: Context, var attachments: MutableList<Attachment>, private val attachmentViewModel: AttachmentViewModel) : RecyclerView.Adapter<AttachmentAdapter.AttachmentViewHolder>() {
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): AttachmentViewHolder {
         val inflater = LayoutInflater.from(parent.context)
-        val view = inflater.inflate(R.layout.item_attach, parent, false)
+        val view = inflater.inflate(R.layout.item_attach_with_badge, parent, false)
         return AttachmentViewHolder(view)
     }
 
@@ -29,18 +31,22 @@ class AttachmentAdapter(private val context: Context, private val attachments: M
         holder.bind(attachments[position])
     }
 
-    fun addAttachments(attachmentsList: List<Attachment>) {
-        attachments.addAll(attachmentsList)
-        Log.d("AttachmentAdapter", attachments.toString())
-//        notifyItemRangeInserted(attachments.size - attachmentsList.size, attachments.size)
-        notifyDataSetChanged()
+    fun clearAttachments() {
+        attachments.clear()
     }
 
-    inner class AttachmentViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
+    inner class AttachmentViewHolder(itemView: View, ) : RecyclerView.ViewHolder(itemView) {
         private val imageView: ImageView = itemView.findViewById(R.id.ivAttach)
+        private val iconRemove: ImageView = itemView.findViewById(R.id.removeIcon)
         fun bind(attachment: Attachment) {
-            Log.d("AttachmentAdapter", attachment.toString())
-            PicassoNotSafe.get(context).load(Client.BASE_URL + attachment.link).into(imageView)
+            iconRemove.setOnClickListener {
+                attachmentViewModel.removeAttachment(attachment)
+            }
+            PicassoNotSafe(context).get().load(Client.BASE_URL + attachment.link).tag(context).fit().placeholder(R.drawable.placeholder).into(imageView)
+//
         }
     }
+
+
+
 }

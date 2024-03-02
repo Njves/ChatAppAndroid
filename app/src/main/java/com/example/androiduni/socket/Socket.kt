@@ -1,11 +1,11 @@
-package com.example.androiduni
+package com.example.androiduni.socket
 
 import android.content.Context
 import android.content.Context.MODE_PRIVATE
 import android.util.Log
+import com.example.androiduni.Client
 import io.socket.client.IO
 import io.socket.client.Socket
-import io.socket.emitter.Emitter
 import okhttp3.OkHttpClient
 import java.net.URISyntaxException
 import java.security.cert.X509Certificate
@@ -51,22 +51,22 @@ object Socket {
         val preferences = context.getSharedPreferences("Login", MODE_PRIVATE)
         if(preferences.getString("access_token", "") == "") {
             Log.e("Socket", "Токен пустой")
-            return
+            throw Exception("Токен пустой необходимо зарегестрироваться")
         }
         options.query = "token=${preferences.getString("access_token", "")}"
         try {
-            instance = IO.socket("https://5.35.88.60:5000/", options)
+            instance = IO.socket(Client.BASE_URL, options)
         } catch (e: URISyntaxException) {
             Log.e("Socket", e.toString())
         }
         instance?.connect()
-        instance?.on(Socket.EVENT_CONNECT, Emitter.Listener {
+        instance?.on(Socket.EVENT_CONNECT) {
             Log.d("Socket", "Socket connected ${instance?.id()}")
-        })
+        }
 
-        instance?.on(Socket.EVENT_DISCONNECT, Emitter.Listener {
+        instance?.on(Socket.EVENT_DISCONNECT) {
             Log.d("Socket", "Socket disconnected")
-        })
+        }
     }
 
     fun get(): Socket {

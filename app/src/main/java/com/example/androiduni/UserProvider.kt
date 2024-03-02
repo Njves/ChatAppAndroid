@@ -10,7 +10,7 @@ import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
 
-object UserProvider {
+object UserProvider  {
     var user: User? = null
     var token: String? = null
     fun loadUser(context: Context) {

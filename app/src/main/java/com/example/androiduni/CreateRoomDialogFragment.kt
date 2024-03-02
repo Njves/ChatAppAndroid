@@ -2,58 +2,42 @@ package com.example.androiduni
 
 import android.app.Dialog
 import android.os.Bundle
-import android.util.Log
 import android.view.View
-import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
+import androidx.core.widget.addTextChangedListener
 import androidx.fragment.app.DialogFragment
-import com.example.androiduni.room.model.RoomModel
+import androidx.fragment.app.activityViewModels
 import com.example.androiduni.room.request.RoomService
+import com.example.androiduni.room.view_model.RoomResponseViewModel
 import com.google.android.material.textfield.TextInputEditText
-import com.google.gson.Gson
-import retrofit2.Call
-import retrofit2.Callback
-import retrofit2.Response
-import java.lang.IllegalStateException
 
 class CreateRoomDialogFragment : DialogFragment() {
+
     private val roomService: RoomService = Client.getClient().create(RoomService::class.java)
-    private val gson: Gson = Gson()
+    private val roomResponseViewModel: RoomResponseViewModel by activityViewModels()
+
+
     override fun onCreateDialog(savedInstanceState: Bundle?): Dialog {
-        return activity?.let {
-            val builder = AlertDialog.Builder(it)
-            val inflater = requireActivity().layoutInflater;
+        return activity?.let { fragmentActivity ->
+            val builder = AlertDialog.Builder(fragmentActivity)
+            val inflater = requireActivity().layoutInflater
             val view: View = inflater.inflate(R.layout.dialog_room_create_fragment, null)
+
             val roomName: TextInputEditText = view.findViewById(R.id.inputRoomName)
+            roomName.addTextChangedListener {
+                if(it?.count()!! < 4) {
+                    roomName.error = "Название комнаты должно быть длинее 4 символов"
+                }
+            }
             builder.setView(view)
-                // Add action buttons.
                 .setPositiveButton("Создать комнату") { dialog, id ->
-                    roomService.createRoom(
-                        RoomModel(
-                            -1,
-                            roomName.text.toString(),
-                            UserProvider.user!!.id,
-                            null
-                        ), UserProvider.token!!
-                    ).enqueue(object : Callback<RoomModel> {
-                        override fun onResponse(call: Call<RoomModel>, response: Response<RoomModel>) {
-                            if(!response.isSuccessful) {
-                                Log.d("CreateRoomDialogFragment", response.errorBody()!!.string())
-                                Toast.makeText(context, response.errorBody()!!.string(), Toast.LENGTH_SHORT).show()
-                            }
-                        }
-
-                        override fun onFailure(call: Call<RoomModel>, t: Throwable) {
-                            Log.d(this@CreateRoomDialogFragment.toString(), t.toString())
-                        }
-
-                    })
+                    roomResponseViewModel.setResponse(roomName.text.toString())
                 }
                 .setNegativeButton("Закрыть") { dialog, id ->
                     getDialog()?.cancel()
                 }
+
             builder.create()
         } ?: throw IllegalStateException("activity cannot be null")
     }
-
 }

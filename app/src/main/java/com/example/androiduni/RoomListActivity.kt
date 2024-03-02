@@ -10,21 +10,27 @@ import android.view.MenuItem
 import android.view.View.GONE
 import android.widget.ProgressBar
 import android.widget.Toast
+import androidx.activity.viewModels
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.SearchView
+import androidx.fragment.app.DialogFragment
+import androidx.lifecycle.Observer
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.example.androiduni.auth.MainActivity
 import com.example.androiduni.database.AppDatabase
+import com.example.androiduni.database.models.RoomWithLastMessage
 import com.example.androiduni.room.model.RoomModel
 import com.example.androiduni.room.request.RoomService
+import com.example.androiduni.room.view_model.RoomResponseViewModel
+import com.example.androiduni.socket.Socket
 import com.example.androiduni.ui.RoomAdapter
 import com.google.android.material.floatingactionbutton.FloatingActionButton
 import com.google.gson.Gson
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
@@ -38,51 +44,91 @@ class RoomListActivity : AppCompatActivity() {
     private val gson: Gson = Gson()
     private val service = Client.getClient().create(RoomService::class.java)
     private lateinit var adapter: RoomAdapter
+    private val roomResponseViewModel: RoomResponseViewModel by viewModels()
+    private val databaseRooms = mutableListOf<RoomWithLastMessage>()
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+        Socket.setConnect(this)
         recyclerViewRoomList = findViewById(R.id.rvRoom)
         buttonCreateRoom = findViewById(R.id.floatingActionButton)
         progressBar = findViewById(R.id.progressBar)
         recyclerViewRoomList.layoutManager = LinearLayoutManager(this)
+        adapter = RoomAdapter(this@RoomListActivity, roomModelList)
+        recyclerViewRoomList.adapter = adapter
+        supportActionBar?.title = UserProvider.user?.username
+//        CoroutineScope(Dispatchers.IO).launch {
+//            AppDatabase.getInstance(this@RoomListActivity)?.let {
+//                databaseRooms.addAll(it.roomDao()?.getAllRooms()!!.toMutableList())
+//                if(databaseRooms.isNotEmpty()) {
+//                    CoroutineScope(Dispatchers.Main).launch {
+//                        Log.d(this@RoomListActivity.toString(), "Из базы данных пришли данные $databaseRooms")
+//                        adapter.addData(databaseRooms.map {
+//                            it.room
+//                        }.toMutableList())
+//
+//                        Toast.makeText(this@RoomListActivity, "из базы данных ${databaseRooms.size}", Toast.LENGTH_SHORT).show()
+//                    }
+//
+//                }
+//
+//            }
+//        }
 
-        service.getRooms().enqueue(object: Callback<List<RoomModel>> {
-            override fun onResponse(call: Call<List<RoomModel>>, response: Response<List<RoomModel>>) {
+        CoroutineScope(Dispatchers.IO).launch {
+            val response = service.getRooms().execute()
+            CoroutineScope(Dispatchers.Main).launch {
                 progressBar.visibility = GONE
                 roomModelList = response.body()!!.toMutableList()
-                adapter = RoomAdapter(this@RoomListActivity, roomModelList)
-                recyclerViewRoomList.adapter = adapter
+                CoroutineScope(Dispatchers.IO).launch {
+                    roomModelList.forEach { model ->
+                        val database = AppDatabase.getInstance(this@RoomListActivity)
+                        CoroutineScope(Dispatchers.Main).launch {
+                            adapter.addData(listOf(model))
+                        }
+                        if(model.id !in databaseRooms.map { it.room.id }.toList()) {
+//                            database?.roomDao()?.insertRoom(model)
+
+                        }
+                    }
+//                    databaseRooms.forEach { dbRoom ->
+//                        if(dbRoom.room.id !in roomModelList.map { it.id }) {
+//                            adapter.remove(dbRoom.room)
+//                        }
+//                    }
+                }
+
                 Log.d(this@RoomListActivity.toString(), response.body()!!.toString())
-                if(!response.isSuccessful) {
+                if (!response.isSuccessful) {
                     Log.d("RoomListActivity", response.message())
                     val error: Error = gson.fromJson(response.message(), Error::class.java)
                     Toast.makeText(this@RoomListActivity, error.error, Toast.LENGTH_SHORT).show()
                 }
             }
-
-            override fun onFailure(call: Call<List<RoomModel>>, t: Throwable) {
-                progressBar.visibility = GONE
-                Log.e(this@RoomListActivity.toString(), t.toString())
-            }
-
-        })
-        CoroutineScope(Dispatchers.IO).launch {
-            AppDatabase.getInstance(this@RoomListActivity)?.let {
-                val rooms = it.roomDao()?.getAllRooms()!!
-                if(rooms.isNotEmpty()) {
-                    CoroutineScope(Dispatchers.Main).launch {
-                        Log.d(this@RoomListActivity.toString(), "Из базы данных пришли данные $rooms")
-                        adapter.addData(roomModelList + rooms.map {
-                            it.room
-                        }.toMutableList())
-                        Toast.makeText(this@RoomListActivity, "из базы данных $rooms.size", Toast.LENGTH_SHORT).show()
-                    }
-
-                }
-
-            }
         }
 
+        roomResponseViewModel.response.observe(this, Observer { item ->
+            service.createRoom(
+                RoomModel(
+                    -1,
+                    item,
+                    UserProvider.user!!.id,
+                    null
+                ), UserProvider.token!!
+            ).enqueue(object: Callback<RoomModel> {
+                override fun onResponse(call: Call<RoomModel>, response: Response<RoomModel>) {
+                    if (!response.isSuccessful) {
+                        Log.d("CreateRoomDialogFragment", response.errorBody()!!.string())
+                        Toast.makeText(this@RoomListActivity, "Неудалось создать комнату", Toast.LENGTH_SHORT).show()
+                    }
+                }
+                override fun onFailure(call: Call<RoomModel>, t: Throwable) {
+                    Log.d("CreateRoomDialogFragment", t.toString())
+                }
+            })
+
+            Toast.makeText(this@RoomListActivity, item, Toast.LENGTH_SHORT).show()
+        })
 
         buttonCreateRoom.setOnClickListener {
             val dialog = CreateRoomDialogFragment()
@@ -91,9 +137,8 @@ class RoomListActivity : AppCompatActivity() {
 
         Socket.get().on("new_room") { anies ->
             anies.forEach {
-                roomModelList.add(gson.fromJson(it.toString(), RoomModel::class.java))
                 runOnUiThread {
-                    recyclerViewRoomList.adapter?.notifyItemInserted(roomModelList.size - 1)
+                    adapter.addData(listOf(gson.fromJson(it.toString(), RoomModel::class.java)))
                 }
             }
         }
@@ -132,10 +177,16 @@ class RoomListActivity : AppCompatActivity() {
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         val id = item.itemId
         if(id == R.id.action_logout) {
-            UserProvider.logoutUser(this.applicationContext)
-            val intent = Intent(this, MainActivity::class.java)
-            startActivity(intent)
-            finish()
+            val confirmDialog = AlertDialog.Builder(this).setTitle("Вы уверены что хотите выйти?").setPositiveButton("Да") { dialog, id ->
+                UserProvider.logoutUser(this.applicationContext)
+                val intent = Intent(this, MainActivity::class.java)
+                startActivity(intent)
+                finish()
+            }.setNegativeButton("Нет") { dialog, id ->
+                dialog.cancel()
+            }
+            confirmDialog.show()
+
         }
         return super.onOptionsItemSelected(item)
     }

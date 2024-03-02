@@ -8,11 +8,12 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageButton
 import android.widget.TextView
+import android.widget.Toast
 import androidx.recyclerview.widget.RecyclerView
 import com.example.androiduni.Client
 import com.example.androiduni.MessageListActivity
 import com.example.androiduni.R
-import com.example.androiduni.Socket
+import com.example.androiduni.socket.Socket
 import com.example.androiduni.UserProvider
 import com.example.androiduni.room.model.RoomModel
 import com.example.androiduni.room.request.RoomService
@@ -45,6 +46,18 @@ class RoomAdapter(private val context: Context, private var roomModelList: Mutab
         notifyItemRangeInserted(this.roomModelList.size - rooms.size, this.roomModelList.size)
     }
 
+    fun removeData(rooms: List<RoomModel>) {
+        rooms.forEach {
+            remove(it)
+        }
+    }
+
+    fun remove(room: RoomModel) {
+        val index = this.roomModelList.indexOf(room)
+        this.roomModelList.removeAt(index)
+        notifyItemRemoved(index)
+    }
+
     inner class RoomViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         private val tvTitle: TextView = itemView.findViewById(R.id.roomTitle)
         private val buttonRemove: ImageButton = itemView.findViewById(R.id.btnRemove)
@@ -59,7 +72,9 @@ class RoomAdapter(private val context: Context, private var roomModelList: Mutab
                             val index = roomModelList.indexOf(roomModel)
                             this@RoomAdapter.notifyItemRemoved(index)
                             roomModelList.removeAt(index)
+                            return
                         }
+                        Toast.makeText(context, response.errorBody()?.string(), Toast.LENGTH_SHORT).show()
                     }
 
                     override fun onFailure(call: Call<Response<Void>>, t: Throwable) {
@@ -71,7 +86,7 @@ class RoomAdapter(private val context: Context, private var roomModelList: Mutab
             }
             itemView.setOnClickListener {
                 val gson = Gson()
-                Socket.get().emit("join", gson.toJson(roomModel))
+                Socket.get().emit("join", gson.toJson(mapOf("id" to roomModel.id)))
                 val intent = Intent(context, MessageListActivity::class.java)
                 intent.putExtra("roomId", roomModel.id)
                 intent.putExtra("roomName", roomModel.name)

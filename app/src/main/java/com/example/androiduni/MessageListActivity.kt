@@ -1,19 +1,16 @@
 package com.example.androiduni
 
-import android.Manifest
 import android.Manifest.permission.READ_EXTERNAL_STORAGE
-import android.Manifest.permission.READ_MEDIA_IMAGES
-import android.Manifest.permission.READ_MEDIA_VIDEO
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
-import android.os.Build
 import android.os.Bundle
-import android.provider.MediaStore
+import android.provider.OpenableColumns
 import android.util.Log
 import android.view.Menu
 import android.view.MenuItem
+import android.view.View
 import android.view.View.GONE
 import android.view.inputmethod.InputMethodManager
 import android.widget.AbsListView.OnScrollListener.SCROLL_STATE_FLING
@@ -23,13 +20,15 @@ import android.widget.ProgressBar
 import android.widget.Toast
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.view.ActionMode
+import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import androidx.core.net.toFile
 import androidx.recyclerview.selection.SelectionTracker
 import androidx.recyclerview.selection.StorageStrategy
+import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.example.androiduni.message.Attachment
@@ -38,22 +37,30 @@ import com.example.androiduni.message.adapter.AttachmentAdapter
 import com.example.androiduni.message.request.MessageRequest
 import com.example.androiduni.room.model.RoomWithMessages
 import com.example.androiduni.room.request.RoomService
+import com.example.androiduni.room.view_model.RoomResponseViewModel
 import com.example.androiduni.select.ActionModeController
 import com.example.androiduni.select.MessageKeyProvider
 import com.example.androiduni.select.MessageLookup
+import com.example.androiduni.socket.Socket
+import com.example.androiduni.ui.AttachmentDiffUtilCallback
 import com.example.androiduni.ui.MessageAdapter
+import com.google.android.material.snackbar.Snackbar
 import com.google.gson.GsonBuilder
+import com.squareup.picasso.Picasso
 import okhttp3.MultipartBody
 import okhttp3.RequestBody
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
 import java.io.File
+import java.io.FileOutputStream
+import java.io.InputStream
 import java.util.ArrayList
 import java.util.Date
 
 
 class MessageListActivity : AppCompatActivity() {
+    private lateinit var root: ConstraintLayout
     private lateinit var recyclerViewMessagesList: RecyclerView
     private lateinit var buttonSend: ImageButton
     private lateinit var buttonAttach: ImageButton
@@ -68,11 +75,13 @@ class MessageListActivity : AppCompatActivity() {
     private val roomService: RoomService = Client.getClient().create(RoomService::class.java)
     private lateinit var tracker: SelectionTracker<Message>
     private lateinit var  adapter: MessageAdapter
-    private val attachmentList: MutableList<Attachment> = mutableListOf()
-    private lateinit var attachmentAdapter: AttachmentAdapter
+    private var attachmentAdapter: AttachmentAdapter? = null
     private val REQUEST_PERMISSIONS_REQUEST_CODE = 1
     private var count = 10
     private var offset = 0
+    private val attachmentViewModel: AttachmentViewModel by viewModels()
+
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_message_list)
@@ -85,7 +94,9 @@ class MessageListActivity : AppCompatActivity() {
         if(roomId == -1) {
             finish()
         }
+
         supportActionBar?.title = roomName
+        root = findViewById(R.id.root)
         buttonSend = findViewById(R.id.btnSend)
         buttonAttach = findViewById(R.id.btnAttach)
         editText = findViewById(R.id.inputMessage)
@@ -93,17 +104,30 @@ class MessageListActivity : AppCompatActivity() {
 
         recyclerViewAttachment = findViewById(R.id.rvAttachments)
         recyclerViewAttachment.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
-        attachmentAdapter = AttachmentAdapter(this, attachmentList)
-        val testData = listOf(Attachment(id=0, type="multipart/form-data; charset=utf-8", link="/content/file_$50b3d825-8d04-47ee-94a1-591b05c8d99a.png", messageId=0),
-            Attachment(id=0, type="multipart/form-data; charset=utf-8", link="/content/file_$77512c12-3ba3-4900-bb9b-0659b7a6084f.png", messageId=0))
-        recyclerViewAttachment.adapter = attachmentAdapter
+        attachmentViewModel.attachments.observe(this) {
+            if(it.isNotEmpty() && recyclerViewAttachment.visibility == GONE) {
+                recyclerViewAttachment.visibility = View.VISIBLE
+                attachmentAdapter = AttachmentAdapter(this, attachmentViewModel.attachments.value?.toMutableList() ?: mutableListOf(), attachmentViewModel)
+                recyclerViewAttachment.adapter = attachmentAdapter
+            }
+            if(it.isEmpty() && recyclerViewAttachment.visibility == View.VISIBLE) {
+                recyclerViewAttachment.visibility = GONE
+            }
+            if(attachmentAdapter == null) {
+                return@observe
+            }
+            val callback = AttachmentDiffUtilCallback(attachmentAdapter!!.attachments, it)
+            val diffResult = DiffUtil.calculateDiff(callback)
+            attachmentAdapter?.attachments = it.toMutableList()
+            diffResult.dispatchUpdatesTo(attachmentAdapter!!)
+        }
 
         buttonSend.setOnClickListener {
             sendMessage()
-            editText.text.clear()
+
         }
         listenNewMessage()
-
+        requestPermissionsIfNecessary(listOf(READ_EXTERNAL_STORAGE))
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
         recyclerViewMessagesList = findViewById(R.id.rvMessages)
         recyclerViewMessagesList.layoutManager = LinearLayoutManager(this)
@@ -129,9 +153,8 @@ class MessageListActivity : AppCompatActivity() {
                             override fun onResponse(call: Call<RoomWithMessages>, response: Response<RoomWithMessages>) {
                                 if(response.body()!!.messages.isEmpty())
                                     return
-                                messageList = (response.body()!!.messages.reversed() + messageList).toMutableList()
+                                messageList.addAll(0, response.body()!!.messages.reversed())
                                 Log.d(this@MessageListActivity.toString(), messageList.toString())
-                                adapter.setData(messageList)
                                 adapter.notifyItemRangeInserted(0, count)
                             }
 
@@ -149,6 +172,9 @@ class MessageListActivity : AppCompatActivity() {
         roomService.getMessages(roomId, count, offset).enqueue(object: Callback<RoomWithMessages> {
             override fun onResponse(call: Call<RoomWithMessages>, response: Response<RoomWithMessages>) {
                 progressBar.visibility = GONE
+                if(response.body()?.messages == null) {
+                    Snackbar.make(this@MessageListActivity.root, "Не удается получить сообщения из комнаты", Snackbar.LENGTH_SHORT).show()
+                }
                 messageList = response.body()!!.messages.reversed().toMutableList()
                 adapter = MessageAdapter(this@MessageListActivity, messageList)
                 recyclerViewMessagesList.adapter = adapter
@@ -159,7 +185,20 @@ class MessageListActivity : AppCompatActivity() {
                     MessageKeyProvider(messageList),
                     MessageLookup(recyclerViewMessagesList),
                     StorageStrategy.createParcelableStorage(Message::class.java)
-                ).build()
+                ).withSelectionPredicate(object: SelectionTracker.SelectionPredicate<Message>() {
+                    override fun canSetStateForKey(key: Message, nextState: Boolean): Boolean {
+                        return key.user.id == UserProvider.user?.id
+                    }
+
+                    override fun canSetStateAtPosition(position: Int, nextState: Boolean): Boolean {
+                        return true
+                    }
+
+                    override fun canSelectMultiple(): Boolean {
+                        return true
+                    }
+
+                }).build()
                 adapter.tracker = tracker
                 tracker.addObserver(object : SelectionTracker.SelectionObserver<Message>() {
                     override fun onSelectionChanged() {
@@ -185,42 +224,53 @@ class MessageListActivity : AppCompatActivity() {
             }
         })
 
-        requestPermissionsIfNecessary(listOf(READ_MEDIA_IMAGES))
 
-        val getContent = registerForActivityResult(ActivityResultContracts.PickVisualMedia()) {
-            it?.let { uri ->
-                val cursor = contentResolver.query(uri, arrayOf(MediaStore.Images.Media.DATA), null, null, null)
-                val columnIndex = cursor?.getColumnIndex(MediaStore.Images.Media.DATA)
-                cursor?.moveToFirst()
-                val path = cursor?.getString(columnIndex!!)!!
-                cursor?.close()
-                val file = File(path)
-                if(file == null) {
-                    Toast.makeText(this@MessageListActivity, "Null", Toast.LENGTH_SHORT).show()
-                    return@registerForActivityResult
+        val getContent = registerForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(5)) {
+            it?.let { uris ->
+                uris.forEach { uri ->
+                    val file = File(getRealPathFromURI(uri, this))
+                    if (file == null) {
+                        Toast.makeText(this@MessageListActivity, "Null", Toast.LENGTH_SHORT).show()
+                        return@registerForActivityResult
+                    }
+                    val requestFile = RequestBody.create(MultipartBody.FORM, file)
+                    val body = MultipartBody.Part.createFormData("file", "file", requestFile)
+                    messageService.uploadImage(UserProvider.token!!, body)
+                        .enqueue(object : Callback<List<Attachment>> {
+                            override fun onResponse(
+                                call: Call<List<Attachment>>,
+                                response: Response<List<Attachment>>
+                            ) {
+                                if (!response.isSuccessful) {
+                                    Toast.makeText(
+                                        this@MessageListActivity,
+                                        "Неудалось загрузить изображение", Toast.LENGTH_SHORT
+                                    ).show()
+                                    Log.d(this@MessageListActivity.toString(), response.toString())
+                                }
+                                response.body()?.let {
+                                    Toast.makeText(
+                                        this@MessageListActivity,
+                                        "Сообщение загружено", Toast.LENGTH_SHORT
+                                    ).show()
+                                    Log.d(
+                                        this@MessageListActivity.toString(),
+                                        response.body()!!.toString()
+                                    )
+                                    response.body()?.let { attach ->
+                                        attach.forEach { item ->
+                                            attachmentViewModel.addAttachment(item)
+                                        }
+                                    }
+                                }
+
+                            }
+
+                            override fun onFailure(call: Call<List<Attachment>>, t: Throwable) {
+                                Log.d(this@MessageListActivity.toString(), t.toString())
+                            }
+                        })
                 }
-                val requestFile = RequestBody.create(MultipartBody.FORM, file)
-                val body = MultipartBody.Part.createFormData("file", "file", requestFile)
-                messageService.uploadImage(UserProvider.token!!, body).enqueue(object: Callback<List<Attachment>> {
-                    override fun onResponse(call: Call<List<Attachment>>, response: Response<List<Attachment>>) {
-                        if(!response.isSuccessful) {
-                            Toast.makeText(this@MessageListActivity,
-                                "Неудалось загрузить изображение", Toast.LENGTH_SHORT).show()
-                            Log.d(this@MessageListActivity.toString(), response.toString())
-                        }
-                        response.body()?.let {
-                            Toast.makeText(this@MessageListActivity,
-                                "Сообщение загружено", Toast.LENGTH_SHORT).show()
-                            Log.d(this@MessageListActivity.toString(), response.body()!!.toString())
-                            attachmentAdapter.addAttachments(it)
-                        }
-
-                    }
-
-                    override fun onFailure(call: Call<List<Attachment>>, t: Throwable) {
-                        Log.d(this@MessageListActivity.toString(), t.toString())
-                    }
-                })
             }
         }
 
@@ -230,6 +280,41 @@ class MessageListActivity : AppCompatActivity() {
 
 
     }
+
+    private fun getRealPathFromURI(uri: Uri, context: Context): String? {
+        val returnCursor = context.contentResolver.query(uri, null, null, null, null)
+        val nameIndex =  returnCursor!!.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+        val sizeIndex = returnCursor.getColumnIndex(OpenableColumns.SIZE)
+        returnCursor.moveToFirst()
+        val name = returnCursor.getString(nameIndex)
+        val size = returnCursor.getLong(sizeIndex).toString()
+        val file = File(context.filesDir, name)
+        try {
+            val inputStream: InputStream? = context.contentResolver.openInputStream(uri)
+            val outputStream = FileOutputStream(file)
+            var read = 0
+            val maxBufferSize = 1 * 1024 * 1024
+            val bytesAvailable: Int = inputStream?.available() ?: 0
+            val bufferSize = Math.min(bytesAvailable, maxBufferSize)
+            val buffers = ByteArray(bufferSize)
+            while (inputStream?.read(buffers).also {
+                    if (it != null) {
+                        read = it
+                    }
+                } != -1) {
+                outputStream.write(buffers, 0, read)
+            }
+            Log.e("File Size", "Size " + file.length())
+            inputStream?.close()
+            outputStream.close()
+            Log.e("File Path", "Path " + file.path)
+
+        } catch (e: java.lang.Exception) {
+            Log.e("Exception", e.message!!)
+        }
+        return file.path
+    }
+
     private fun requestPermissionsIfNecessary(permissions: List<String>) {
         val permissionsToRequest = mutableListOf<String>()
         permissions.forEach { permission ->
@@ -267,15 +352,21 @@ class MessageListActivity : AppCompatActivity() {
     }
 
     private fun sendMessage() {
-        val message = Message(-1, editText.text.toString(), Date(), roomId, listOf(), UserProvider.user!!)
+        val attachmentsList = attachmentViewModel.attachments.value
+        val message = Message(
+                -1, editText.text.toString(), Date(), roomId,
+                attachmentsList ?: listOf(), UserProvider.user!!
+            )
+
         val gson = GsonBuilder().create()
         Socket.get().emit("new_message", gson.toJson(message))
+        attachmentViewModel.clearAttachment()
+        editText.text.clear()
     }
 
     private fun listenNewMessage() {
         val gson = Client.gson
-        Socket.get().on("chat") {
-
+        Socket.get().on("chat") { it ->
             it.forEach {
                 messageList.add(gson.fromJson(it.toString(), Message::class.java))
                 runOnUiThread {
@@ -289,7 +380,7 @@ class MessageListActivity : AppCompatActivity() {
 
 
     override fun onCreateOptionsMenu(menu: Menu?): Boolean {
-        getMenuInflater().inflate(R.menu.menu_message, menu);
+        menuInflater.inflate(R.menu.menu_message, menu);
         return super.onCreateOptionsMenu(menu)
     }
 
@@ -297,6 +388,8 @@ class MessageListActivity : AppCompatActivity() {
         val id = item.itemId
         if(id == R.id.mapButton) {
             val intent = Intent(this, MapActivity::class.java)
+            intent.putExtra("roomId", roomId)
+            intent.putExtra("roomName", roomName)
             startActivity(intent)
         }
         return super.onOptionsItemSelected(item)
@@ -305,5 +398,10 @@ class MessageListActivity : AppCompatActivity() {
     override fun onSupportNavigateUp(): Boolean {
         finish()
         return true
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        Picasso.get().cancelTag(this)
     }
 }
